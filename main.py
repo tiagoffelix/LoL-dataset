@@ -10,7 +10,9 @@ from helper import get_ten_min_gold
 from helper import concat_json
 from summoner_list import summoner_list
 
+
 load_dotenv()
+
 
 API_URL = 'na1.api.riotgames.com/lol/'
 API_KEY = os.getenv("LEAGUE_API_KEY")
@@ -21,6 +23,19 @@ SUMMONER_BY_NAME = 'summoner/v4/summoners/by-name/'
 num_requests = 0
 total_requests = 0
 
+# Returns puuid (str) for a given summoner name
+def get_puuid(summoner_name):
+	get_url = 'https://' + API_URL + SUMMONER_BY_NAME
+	r = requests.get(get_url + summoner_name, headers={"X-Riot-Token": API_KEY})
+	if r.status_code == requests.codes.ok:
+		data = r.json()
+		return data['puuid']
+	else:
+		print(f"Failed to get puuid for {summoner_name}")
+		print(f"Error code: {r.status_code}")
+		print(f"Response body: {r.text}")
+		return None
+
 """ Helper functions that keep track of # of requests """
 # Check to ensure we didn't exceed the API request limit for every 2 min
 def reached_request_limit():
@@ -30,27 +45,27 @@ def reached_request_limit():
 		global total_requests
 		total_requests += num_requests
 		num_requests = 0
-        
+		
 		return True
 	else:
 		return False
 
 def make_and_verify_request(get_url):
-    r = requests.get(get_url, 
+	r = requests.get(get_url, 
 		headers={"X-Riot-Token": API_KEY})
-    
-    global num_requests
-    num_requests += 1
+	
+	global num_requests
+	num_requests += 1
 
-    # Verify
-    if r.status_code == requests.codes.ok:
-        return r.json()
+	# Verify
+	if r.status_code == requests.codes.ok:
+		return r.json()
 
-    else:
-        print(f"Something happened with the request {get_url}")
-        print(f"Error code: {r.status_code}")
-        print(f"Response body: {r.json}")
-        return ""
+	else:
+		print(f"Something happened with the request {get_url}")
+		print(f"Error code: {r.status_code}")
+		print(f"Response body: {r.json}")
+		return ""
 
 """
 get 20 match ids for each summoner
@@ -217,4 +232,13 @@ def populate_dataset(summoner_list):
 	with open('lots_and_lots_of_data.json', 'w') as s:
 		s.write(json.dumps(data, indent = 4))
 
-populate_dataset(summoner_list)
+
+# Utility: Print last 20 matches for a given summoner name
+if __name__ == "__main__":
+	summoner_name = 'Speazyy'
+	puuid = get_puuid(summoner_name)
+	if puuid:
+		matches = get_matches(puuid)
+		print(f"Last 20 matches for {summoner_name}:\n{matches}")
+	else:
+		print("Could not retrieve matches.")
