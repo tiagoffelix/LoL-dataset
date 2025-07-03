@@ -14,9 +14,9 @@ from summoner_list import summoner_list
 load_dotenv()
 
 
-API_URL = 'na1.api.riotgames.com/lol/'
+API_URL = 'euw1.api.riotgames.com/lol/'
 API_KEY = os.getenv("LEAGUE_API_KEY")
-REGION_URL = 'americas.api.riotgames.com/lol/'
+REGION_URL = 'europe.api.riotgames.com/lol/'
 MATCH_ID_ENDPOINT = 'match/v5/matches/by-puuid/'
 MATCH_INFORMATION_ENDPOINT = 'match/v5/matches/'
 SUMMONER_BY_NAME = 'summoner/v4/summoners/by-name/'
