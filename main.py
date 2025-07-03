@@ -10,12 +10,11 @@ from helper import get_ten_min_gold
 from helper import concat_json
 from summoner_list import summoner_list
 
-
 load_dotenv()
 
 
 API_URL = 'euw1.api.riotgames.com/lol/'
-API_KEY = os.getenv("LEAGUE_API_KEY")
+API_KEY = "RGAPI-89685202-296f-435e-975a-ac3e71700dca"
 REGION_URL = 'europe.api.riotgames.com/lol/'
 MATCH_ID_ENDPOINT = 'match/v5/matches/by-puuid/'
 MATCH_INFORMATION_ENDPOINT = 'match/v5/matches/'
@@ -23,15 +22,19 @@ SUMMONER_BY_NAME = 'summoner/v4/summoners/by-name/'
 num_requests = 0
 total_requests = 0
 
-# Returns puuid (str) for a given summoner name
-def get_puuid(summoner_name):
-	get_url = 'https://' + API_URL + SUMMONER_BY_NAME
-	r = requests.get(get_url + summoner_name, headers={"X-Riot-Token": API_KEY})
+print(os.getenv("LEAGUE_API_KEY"))
+
+# Returns puuid (str) for a given Riot ID (name/tag)
+def get_puuid(riot_name, riot_tag):
+	# riot_name: e.g. 'Speazyy', riot_tag: e.g. 'EUW'
+	get_url = f"https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{riot_name}/{riot_tag}"
+	headers = {"X-Riot-Token": API_KEY}
+	r = requests.get(get_url, headers=headers)
 	if r.status_code == requests.codes.ok:
 		data = r.json()
 		return data['puuid']
 	else:
-		print(f"Failed to get puuid for {summoner_name}")
+		print(f"Failed to get puuid for {riot_name}#{riot_tag}")
 		print(f"Error code: {r.status_code}")
 		print(f"Response body: {r.text}")
 		return None
@@ -235,10 +238,22 @@ def populate_dataset(summoner_list):
 
 # Utility: Print last 20 matches for a given summoner name
 if __name__ == "__main__":
-	summoner_name = 'Speazyy'
-	puuid = get_puuid(summoner_name)
+	riot_name = 'Speazyy'
+	riot_tag = 'EUW'
+	puuid = get_puuid(riot_name, riot_tag)
+	print(f"PUUID for {riot_name}#{riot_tag}: {puuid}")
 	if puuid:
 		matches = get_matches(puuid)
-		print(f"Last 20 matches for {summoner_name}:\n{matches}")
+		print(f"Last 20 matches for {riot_name}#{riot_tag}:\n{matches}")
+		print("\nFetching match info for each match...")
+		all_match_info = []
+		for match_id in matches:
+			info = get_match_info(match_id)
+			all_match_info.append(info)
+			print(f"Match {match_id} info:\n{json.dumps(info, indent=2)}\n")
+		# Optionally, save all info to a file
+		with open(f"{riot_name}_{riot_tag}_matches_info.json", "w") as f:
+			json.dump(all_match_info, f, indent=2)
+		print(f"All match info saved to {riot_name}_{riot_tag}_matches_info.json")
 	else:
 		print("Could not retrieve matches.")
