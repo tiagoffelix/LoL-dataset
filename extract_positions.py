@@ -51,17 +51,35 @@ df = pd.DataFrame(positions)
 # Load map image
 map_img = mpimg.imread("lol_map.png")
 
+
+# Build a mapping from puuid to Riot ID
+puuid_to_riotid = {}
+puuids = matches_info[0].get("puuid", [])
+riot_names = matches_info[0].get("riotIdGameName", [])
+riot_tags = matches_info[0].get("riotIdTagline", [])
+for i in range(len(puuids)):
+    puuid_to_riotid[puuids[i]] = f"{riot_names[i]}#{riot_tags[i]}"
+
+# Build a mapping from participantId to puuid using timeline data
+participantid_to_puuid = {}
+first_frame = timeline["info"]["frames"][0]
+for pid, pdata in first_frame["participantFrames"].items():
+    if "puuid" in pdata:
+        participantid_to_puuid[pid] = pdata["puuid"]
+
 # Plot movement path for each player
-for pid in sorted(df["participantId"].unique(), key=int):
+for idx, pid in enumerate(sorted(df["participantId"].unique(), key=int)):
     player_df = df[df["participantId"] == pid].sort_values("timestamp")
     plt.figure(figsize=(8, 6))
-    # Show map image as background, fit to 0-18000
     plt.imshow(map_img, extent=[0, 18000, 0, 18000], aspect='auto', alpha=0.6)
-    # KDE heatmap for density
     sns.kdeplot(x=player_df["x"], y=player_df["y"], fill=True, cmap="viridis", bw_adjust=0.5, alpha=0.7)
-    # Overlay movement path
     plt.plot(player_df["x"], player_df["y"], color="red", marker="o", markersize=2, linewidth=1, alpha=0.8, label="Path")
-    plt.title(f"Movement Heatmap & Path for Player {pid}")
+    # Use Riot ID gameName if available, else fallback
+    if riot_names and idx < len(riot_names):
+        name = riot_names[idx]
+    else:
+        name = f"Player {pid}"
+    plt.title(f"Movement Heatmap & Path for {name}")
     plt.xlabel("X")
     plt.ylabel("Y")
     plt.xlim(0, 18000)

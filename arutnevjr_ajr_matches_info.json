@@ -36,6 +36,30 @@
       "BOTTOM",
       "UTILITY"
     ],
+    "riotIdGameName": [
+      "Jimmy Neutron",
+      "Vulture7734",
+      "proscot",
+      "yellowtao",
+      "Tom",
+      "LynxCerez",
+      "711",
+      "arutnevjr",
+      "ttv spankanatorx",
+      "Solemn"
+    ],
+    "riotIdTagline": [
+      "Jerry",
+      "EUW",
+      "EUW",
+      "EUW",
+      "Tombo",
+      "7777",
+      "JG1",
+      "ajr",
+      "LMAO",
+      "TTV"
+    ],
     "bans": [
       "Malphite",
       "Viego",
@@ -247,18 +271,6 @@
       2.4,
       6.333333333333333,
       5.25
-    ],
-    "playerNames": [
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      ""
     ],
     "tenMinGold": [
       3388,
