@@ -14,7 +14,7 @@ load_dotenv()
 
 
 API_URL = 'euw1.api.riotgames.com/lol/'
-API_KEY = "RGAPI-89685202-296f-435e-975a-ac3e71700dca"
+API_KEY = os.getenv("LEAGUE_API_KEY")
 REGION_URL = 'europe.api.riotgames.com/lol/'
 MATCH_ID_ENDPOINT = 'match/v5/matches/by-puuid/'
 MATCH_INFORMATION_ENDPOINT = 'match/v5/matches/'
@@ -84,7 +84,7 @@ def get_matches(puuid):
 		print("resume from get_matches()")
 
 	get_url = 'https://' + REGION_URL + MATCH_ID_ENDPOINT
-	match_type = {'type':'ranked', 'start':'0', 'count':'20'} 
+	match_type = {'type':'ranked', 'start':'0', 'count':'1'} 
 		
 	r = requests.get(get_url + puuid + '/ids', 
 				headers={"X-Riot-Token": API_KEY},
@@ -142,69 +142,77 @@ def get_match_info(match_id):
 		print("resume from get_match_info")
 
 	get_url = 'https://' + REGION_URL + MATCH_INFORMATION_ENDPOINT + match_id
-
 	game_data = make_and_verify_request(get_url)
 
-	# make empty cols
-	matches = []
-	picks = []
-	position = []
-	bans = []
-	teams = []
-	kills = []
-	deaths = []
-	assists = []
-	gold = []
-	challenges = []
-	win = []
+	# Prepare lists for each stat
+	matches, picks, position, bans, teams = [], [], [], [], []
+	kills, deaths, assists, gold, win = [], [], [], [], []
+	damage_dealt, damage_taken, items = [], [], []
+	riot_game_names, riot_taglines = [], []
+	kda = []
 
-	# to keep track of 10 players in 1 game
 	index = 0
-	# populate each row with a player's data
 	for player in game_data["info"]["participants"]:
-		row = {}
-		# Ids
-		matches.append(match_id) 
+		matches.append(match_id)
 		picks.append(player.get("championName"))
-
 		position.append(player.get('individualPosition'))
-		# there are 2 teams
+		kills.append(player.get("kills"))
+		deaths.append(player.get("deaths"))
+		assists.append(player.get("assists"))
+		gold.append(player.get("goldEarned"))
+		win.append(player.get("win"))
+		damage_dealt.append(player.get("totalDamageDealtToChampions"))
+		damage_taken.append(player.get("totalDamageTaken"))
+		# KDA calculation
+		d = player.get("deaths")
+		kda.append((player.get("kills") + player.get("assists")) / d if d != 0 else player.get("kills") + player.get("assists"))
+		# Items
+		items.append([player.get(f"item{i}") for i in range(7)])
+		# Riot ID gameName and tagline
+		puuid = player.get("puuid")
+		riot_id_url = f"https://europe.api.riotgames.com/riot/account/v1/accounts/by-puuid/{puuid}"
+		headers = {"X-Riot-Token": API_KEY}
+		riot_id_resp = requests.get(riot_id_url, headers=headers)
+		if riot_id_resp.status_code == requests.codes.ok:
+			riot_id_data = riot_id_resp.json()
+			riot_game_names.append(riot_id_data.get("gameName", ""))
+			riot_taglines.append(riot_id_data.get("tagLine", ""))
+		else:
+			riot_game_names.append("")
+			riot_taglines.append("")
+
+		# Team and bans
 		if index < 5:
 			champion_id = game_data["info"]["teams"][0]["bans"][index]["championId"]
 			bans.append(id_to_name(champion_id))
 			teams.append("blue")
 		else:
-			# mod index so index of 2nd team starts at 0 too
-			champion_id = game_data["info"]["teams"][1]["bans"][index%5]["championId"]
+			champion_id = game_data["info"]["teams"][1]["bans"][index % 5]["championId"]
 			bans.append(id_to_name(champion_id))
 			teams.append("red")
-
-		kills.append(player.get("kills"))
-		deaths.append(player.get("deaths"))
-		assists.append(player.get("assists"))
-		gold.append(player.get("goldEarned"))
-		challenges.append(fill_json(player.get("challenges", {})))
-		win.append(player.get("win"))
-
 		index += 1
-	
-	# query timeline API to get gold @ 10 min
+
 	ten_min_gold, opponent_ten_min_gold = fetch_timeline_info(match_id, position)
 
 	return {
 		"matches": matches,
 		"picks": picks,
 		"position": position,
+		"riotIdGameName": riot_game_names,
+		"riotIdTagline": riot_taglines,
 		"bans": bans,
 		"teams": teams,
 		"kills": kills,
 		"deaths": deaths,
 		"assists": assists,
 		"gold": gold,
+		"win": win,
+		"damageDealt": damage_dealt,
+		"damageTaken": damage_taken,
+		"items": items,
+		"KDA": kda,
 		"tenMinGold": ten_min_gold,
 		"tenMinLaneOpponentGold": opponent_ten_min_gold,
-		"challenges": challenges,
-		"win": win
 	}
 
 # print(get_match_info('NA1_4250997412'))
@@ -238,8 +246,8 @@ def populate_dataset(summoner_list):
 
 # Utility: Print last 20 matches for a given summoner name
 if __name__ == "__main__":
-	riot_name = 'Speazyy'
-	riot_tag = 'EUW'
+	riot_name = 'arutnevjr'
+	riot_tag = 'ajr'
 	puuid = get_puuid(riot_name, riot_tag)
 	print(f"PUUID for {riot_name}#{riot_tag}: {puuid}")
 	if puuid:
