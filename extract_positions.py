@@ -12,20 +12,24 @@ API_KEY = os.getenv("LEAGUE_API_KEY")
 print("Loaded API KEY:", API_KEY)  # Debug print
 
 # Load your match info file
-with open("Speazyy_EUW_matches_info.json", "r") as f:
+with open("arutnevjr_ajr_matches_info.json", "r") as f:
     matches_info = json.load(f)
 
 # Get the first match id (or any match you want)
 match_id = matches_info[0]["matches"][0]
 
+
 # Fetch timeline data for the match
 API_KEY = os.getenv("LEAGUE_API_KEY")
 REGION_URL = 'europe.api.riotgames.com/lol/'
 MATCH_INFORMATION_ENDPOINT = 'match/v5/matches/'
-timeline_url = f"https://{REGION_URL}{MATCH_INFORMATION_ENDPOINT}{match_id}/timeline"
 headers = {"X-Riot-Token": API_KEY}
-
+timeline_url = f"https://{REGION_URL}{MATCH_INFORMATION_ENDPOINT}{match_id}/timeline"
 timeline = requests.get(timeline_url, headers=headers).json()
+
+# Fetch match info for player names
+matchinfo_url = f"https://{REGION_URL}{MATCH_INFORMATION_ENDPOINT}{match_id}"
+matchinfo = requests.get(matchinfo_url, headers=headers).json()
 
 # Check for 'info' key before processing
 if "info" not in timeline:
@@ -39,7 +43,7 @@ for frame in timeline["info"]["frames"]:
     for pid, pdata in frame["participantFrames"].items():
         if "position" in pdata:
             positions.append({
-                "participantId": pid,
+                "participantId": str(pid),
                 "x": pdata["position"]["x"],
                 "y": pdata["position"]["y"],
                 "timestamp": frame["timestamp"]
@@ -54,31 +58,46 @@ map_img = mpimg.imread("lol_map.png")
 
 
 
-# Build a mapping from puuid to Riot ID
-puuid_to_riotid = {}
-puuids = matches_info[0].get("puuid", [])
-riot_names = matches_info[0].get("riotIdGameName", [])
-riot_tags = matches_info[0].get("riotIdTagline", [])
-for i in range(len(puuids)):
-    puuid_to_riotid[puuids[i]] = f"{riot_names[i]}#{riot_tags[i]}"
 
-# Build a mapping from participantId to puuid using timeline data
+## Build a mapping from puuid to Riot ID (name#tag) using match info
+puuid_to_riotid = {}
+for participant in matchinfo["info"]["participants"]:
+    puuid = participant.get("puuid")
+    name = participant.get("riotIdGameName")
+    tag = participant.get("riotIdTagline")
+    # fallback to summonerName if riotIdGameName/tag missing
+    if not name or not tag:
+        name = participant.get("summonerName")
+        tag = ""
+    if puuid and name:
+        puuid_to_riotid[puuid] = f"{name}#{tag}" if tag else name
+
+# Print out the player names (Riot ID)
+print("Player names in this match:")
+for puuid, riotid in puuid_to_riotid.items():
+    print(riotid)
+
+## Build a mapping from participantId to puuid using match info participants
 participantid_to_puuid = {}
-first_frame = timeline["info"]["frames"][0]
-for pid, pdata in first_frame["participantFrames"].items():
-    if "puuid" in pdata:
-        participantid_to_puuid[pid] = pdata["puuid"]
+for participant in matchinfo["info"]["participants"]:
+    pid = str(participant.get("participantId"))
+    puuid = participant.get("puuid")
+    if pid and puuid:
+        participantid_to_puuid[pid] = puuid
 
 # Plot movement path for each player
 for pid in sorted(df["participantId"].unique(), key=int):
     player_df = df[df["participantId"] == pid].sort_values("timestamp")
+    puuid = participantid_to_puuid.get(str(pid))
+    riotid = puuid_to_riotid.get(puuid, f"Player {pid}")
+    print(f"DEBUG: pid={pid}, puuid={puuid}, riotid={riotid}")
     plt.figure(figsize=(8, 6))
     plt.imshow(map_img, extent=[0, 18000, 0, 18000], aspect='auto', alpha=0.6)
     sns.kdeplot(x=player_df["x"], y=player_df["y"], fill=True, cmap="viridis", bw_adjust=0.5, alpha=0.7)
     plt.plot(player_df["x"], player_df["y"], color="red", marker="o", markersize=2, linewidth=1, alpha=0.8, label="Path")
-    puuid = participantid_to_puuid.get(pid)
-    name = puuid_to_riotid.get(puuid, f"Player {pid}")
-    plt.title(f"Movement Heatmap & Path for {name}")
+
+
+    plt.title(f"Movement Heatmap & Path for {riotid}")
     plt.xlabel("X")
     plt.ylabel("Y")
     plt.xlim(0, 18000)
