@@ -53,40 +53,55 @@ items = [item for item in items if item != 0]
 most_used_items = pd.Series(items).value_counts().head(5)
 
 
-# KDA bar plot
+
+# KDA bar plot with value labels
 plt.figure(figsize=(8, 4))
-sns.barplot(x="champion", y="KDA", hue="team", data=df)
+ax = sns.barplot(x="champion", y="KDA", hue="team", data=df)
 plt.title("KDA dos jogadores")
 plt.ylabel("KDA")
 plt.xlabel("Champion")
 plt.legend()
+for p in ax.patches:
+    height = p.get_height()
+    if not pd.isna(height):
+        ax.annotate(f'{height:.2f}', (p.get_x() + p.get_width() / 2., height),
+                    ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
 plt.tight_layout()
 plt.show()
 
-# Average gold per team bar plot
+
+# Average gold per team bar plot with value labels
 plt.figure(figsize=(6, 4))
-avg_gold.plot(kind="bar", color=["blue", "red"])
+ax = avg_gold.plot(kind="bar", color=["blue", "red"])
 plt.title("Average Gold per Team")
 plt.ylabel("Average Gold")
 plt.xlabel("Team")
+for i, v in enumerate(avg_gold):
+    ax.annotate(f'{v:.0f}', (i, v), ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
 plt.tight_layout()
 plt.show()
 
-# Average damage taken per team bar plot (if available)
+
+# Average damage taken per team bar plot with value labels (if available)
 if isinstance(avg_damage_taken, pd.Series):
     plt.figure(figsize=(6, 4))
-    avg_damage_taken.plot(kind="bar", color=["blue", "red"])
+    ax = avg_damage_taken.plot(kind="bar", color=["blue", "red"])
     plt.title("Average Damage Taken per Team")
     plt.ylabel("Average Damage Taken")
     plt.xlabel("Team")
+    for i, v in enumerate(avg_damage_taken):
+        ax.annotate(f'{v:.0f}', (i, v), ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
     plt.tight_layout()
     plt.show()
 
-# Most used items bar plot
+
+# Most used items bar plot with value labels
 plt.figure(figsize=(8, 4))
-most_used_items.plot(kind="bar")
+ax = most_used_items.plot(kind="bar")
 plt.title("Most Used Items in the Game (item0-item6)")
 plt.ylabel("Count")
 plt.xlabel("Item ID")
+for i, v in enumerate(most_used_items):
+    ax.annotate(f'{v}', (i, v), ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
 plt.tight_layout()
 plt.show()
