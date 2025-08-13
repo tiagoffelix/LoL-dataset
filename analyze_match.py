@@ -2,6 +2,21 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pathlib import Path
+from datetime import datetime, timezone
+
+# Figure saving setup
+FIG_ROOT = Path("figures")
+(FIG_ROOT / "E1").mkdir(parents=True, exist_ok=True)
+RUN_DATE = datetime.now(timezone.utc).date().isoformat()
+
+def save_fig(fig, filename: str, subdir: str = None, dpi: int = 200):
+    out_dir = FIG_ROOT if not subdir else FIG_ROOT / subdir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / filename
+    fig.savefig(out_path.as_posix(), dpi=dpi, bbox_inches='tight')
+    print(f"Saved figure: {out_path}")
+    return out_path.as_posix()
 
 # Load match info (replace with your actual file if needed)
 with open("arutnevjr_ajr_matches_info.json", "r") as f:
@@ -67,6 +82,7 @@ for p in ax.patches:
         ax.annotate(f'{height:.2f}', (p.get_x() + p.get_width() / 2., height),
                     ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
 plt.tight_layout()
+save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_KDA.png", subdir="E1")
 plt.show()
 
 
@@ -79,6 +95,7 @@ plt.xlabel("Team")
 for i, v in enumerate(avg_gold):
     ax.annotate(f'{v:.0f}', (i, v), ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
 plt.tight_layout()
+save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_AvgGold.png", subdir="E1")
 plt.show()
 
 
@@ -92,6 +109,7 @@ if isinstance(avg_damage_taken, pd.Series):
     for i, v in enumerate(avg_damage_taken):
         ax.annotate(f'{v:.0f}', (i, v), ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
     plt.tight_layout()
+    save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_AvgDamageTaken.png", subdir="E1")
     plt.show()
 
 
@@ -104,4 +122,5 @@ plt.xlabel("Item ID")
 for i, v in enumerate(most_used_items):
     ax.annotate(f'{v}', (i, v), ha='center', va='bottom', fontsize=9, color='black', xytext=(0, 3), textcoords='offset points')
 plt.tight_layout()
+save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_MostUsedItems.png", subdir="E1")
 plt.show()

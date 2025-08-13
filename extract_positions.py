@@ -6,10 +6,28 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.image as mpimg
+from pathlib import Path
+from datetime import datetime, timezone
 
-load_dotenv()
+# Load environment and API key (from .env)
+load_dotenv(override=True)
 API_KEY = os.getenv("LEAGUE_API_KEY")
-print("Loaded API KEY:", API_KEY)  # Debug print
+if not API_KEY:
+    print("LEAGUE_API_KEY not found in environment. Set it in .env and retry.")
+    raise SystemExit(1)
+
+# Figure saving setup
+FIG_ROOT = Path("figures")
+(FIG_ROOT / "E3").mkdir(parents=True, exist_ok=True)
+RUN_DATE = datetime.now(timezone.utc).date().isoformat()
+
+def save_fig(fig, filename: str, subdir: str = None, dpi: int = 200):
+    out_dir = FIG_ROOT if not subdir else FIG_ROOT / subdir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / filename
+    fig.savefig(out_path.as_posix(), dpi=dpi, bbox_inches='tight')
+    print(f"Saved figure: {out_path}")
+    return out_path.as_posix()
 
 # Load your match info file
 with open("arutnevjr_ajr_matches_info.json", "r") as f:
@@ -19,23 +37,33 @@ with open("arutnevjr_ajr_matches_info.json", "r") as f:
 match_id = matches_info[0]["matches"][0]
 
 
-# Fetch timeline data for the match
-API_KEY = os.getenv("LEAGUE_API_KEY")
+# Prepare endpoints
 REGION_URL = 'europe.api.riotgames.com/lol/'
 MATCH_INFORMATION_ENDPOINT = 'match/v5/matches/'
 headers = {"X-Riot-Token": API_KEY}
+
 timeline_url = f"https://{REGION_URL}{MATCH_INFORMATION_ENDPOINT}{match_id}/timeline"
-timeline = requests.get(timeline_url, headers=headers).json()
+resp_tl = requests.get(timeline_url, headers=headers)
+if resp_tl.status_code != 200:
+    print(f"Timeline request failed: {resp_tl.status_code}\n{resp_tl.text}")
+    raise SystemExit(1)
+
+timeline = resp_tl.json()
 
 # Fetch match info for player names
 matchinfo_url = f"https://{REGION_URL}{MATCH_INFORMATION_ENDPOINT}{match_id}"
-matchinfo = requests.get(matchinfo_url, headers=headers).json()
+resp_mi = requests.get(matchinfo_url, headers=headers)
+if resp_mi.status_code != 200:
+    print(f"Match info request failed: {resp_mi.status_code}\n{resp_mi.text}")
+    raise SystemExit(1)
+
+matchinfo = resp_mi.json()
 
 # Check for 'info' key before processing
 if "info" not in timeline:
     print("Timeline API response did not contain 'info'. Full response:")
     print(json.dumps(timeline, indent=2))
-    exit(1)
+    raise SystemExit(1)
 
 # Extract positions for all players across all frames
 positions = []
@@ -50,7 +78,6 @@ for frame in timeline["info"]["frames"]:
             })
 
 df = pd.DataFrame(positions)
-
 
 # Load map image
 map_img = mpimg.imread("lol_map.png")
@@ -104,4 +131,7 @@ for pid in sorted(df["participantId"].unique(), key=int):
     plt.ylim(0, 18000)
     plt.legend()
     plt.grid(True)
+    # Save each player's heatmap
+    safe_name = riotid.replace('#', '_').replace(' ', '_')
+    save_fig(plt.gcf(), f"E3_script_{RUN_DATE}_{safe_name}_Heatmap.png", subdir="E3")
     plt.show()

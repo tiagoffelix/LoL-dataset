@@ -8,7 +8,7 @@ from fetch_api_test import get_matches
 from summoners import summoner_list
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 REGION_URL = 'americas.api.riotgames.com/lol/'
 MATCH_INFORMATION_ENDPOINT = 'match/v5/matches/'
@@ -28,8 +28,11 @@ def reached_request_limit():
         return False
 
 def make_and_verify_request(get_url):
+    if not API_KEY:
+        print("LEAGUE_API_KEY is missing. Ensure it is set in .env and try again.")
+        return ""
     r = requests.get(get_url, 
-		headers={"X-Riot-Token": API_KEY})
+        headers={"X-Riot-Token": API_KEY})
     
     global num_requests
     num_requests += 1
@@ -41,7 +44,10 @@ def make_and_verify_request(get_url):
     else:
         print(f"Something happened with the request {get_url}")
         print(f"Error code: {r.status_code}")
-        print(f"Response body: {r.json}")
+        try:
+            print(f"Response body: {r.json()}")
+        except Exception:
+            print("Response body not JSON")
         return ""
 
 # get champion name + position played columns
@@ -56,9 +62,9 @@ def get_position(match_id):
     # fill cols with champion name + position
     champion = []
     position_played = []
-    for player in game_data["info"]["participants"]:
-        champion.append(player['championName'])
-        position_played.append(player['individualPosition'])
+    for player in game_data.get("info", {}).get("participants", []):
+        champion.append(player.get('championName'))
+        position_played.append(player.get('individualPosition'))
     
     return champion, position_played
 
@@ -90,8 +96,8 @@ def fetch_game_data(match_id):
     data = make_and_verify_request(get_url) # use requests.get()
     
     # if request failed
-    if data == "":
-        exit()
+    if data == "" or "info" not in data:
+        return []
 
     champion, position_played = get_position(match_id)
     
@@ -139,7 +145,9 @@ def populate_timeline_data():
         matches = get_matches(puuid)
         num_requests += 1
         for match in matches:
-            data.extend(fetch_game_data(match))
+            game = fetch_game_data(match)
+            if game:
+                data.extend(game)
 
         # to not exceed Riot Games' API request rate limit
         # needs 16 min and 40 seconds to finish
@@ -148,4 +156,4 @@ def populate_timeline_data():
     with open('lane_opponent.json', 'w') as s:
         s.write(json.dumps(data, indent = 4))
 
-populate_timeline_data()
+# populate_timeline_data()
