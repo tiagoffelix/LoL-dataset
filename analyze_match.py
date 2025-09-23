@@ -11,7 +11,7 @@ SHOW_PLOTS = True  # Set False to disable interactive display
 # Figure saving setup
 FIG_ROOT = Path("figures")
 (FIG_ROOT / "E1").mkdir(parents=True, exist_ok=True)
-RUN_DATE = datetime.now(timezone.utc).date().isoformat()
+RUN_STAMP = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
 # Global seaborn theme for professional look
 sns.set_theme(style="whitegrid", context="talk", palette="deep")
@@ -81,7 +81,7 @@ ax.set_ylabel("KDA")
 annotate_bars(ax)
 ax.legend(title="Team", frameon=True)
 plt.tight_layout()
-save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_KDA.png", subdir="E1")
+save_fig(plt.gcf(), f"E1_script_{RUN_STAMP}_KDA.png", subdir="E1")
 if SHOW_PLOTS:
     plt.show()
 else:
@@ -99,7 +99,7 @@ for p in ax.patches:
     ax.annotate(f"{w:.0f}", (w, p.get_y()+p.get_height()/2), ha='left', va='center', fontsize=9, xytext=(4,0), textcoords='offset points')
 safe_remove_legend(ax)
 plt.tight_layout()
-save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_AvgGold.png", subdir="E1")
+save_fig(plt.gcf(), f"E1_script_{RUN_STAMP}_AvgGold.png", subdir="E1")
 if SHOW_PLOTS:
     plt.show()
 else:
@@ -119,7 +119,7 @@ if "damageTaken" in match:
         ax.annotate(f"{w:.0f}", (w, p.get_y()+p.get_height()/2), ha='left', va='center', fontsize=9, xytext=(4,0), textcoords='offset points')
     safe_remove_legend(ax)
     plt.tight_layout()
-    save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_AvgDamageTaken.png", subdir="E1")
+    save_fig(plt.gcf(), f"E1_script_{RUN_STAMP}_AvgDamageTaken.png", subdir="E1")
     if SHOW_PLOTS:
         plt.show()
     else:
@@ -143,7 +143,7 @@ if items_flat:
     ax.set_ylabel("Count")
     annotate_bars(ax, fmt="{:.0f}")
     plt.tight_layout()
-    save_fig(plt.gcf(), f"E1_script_{RUN_DATE}_MostUsedItems.png", subdir="E1")
+    save_fig(plt.gcf(), f"E1_script_{RUN_STAMP}_MostUsedItems.png", subdir="E1")
     if SHOW_PLOTS:
         plt.show()
     else:

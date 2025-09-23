@@ -4,6 +4,8 @@ import seaborn as sns
 from pathlib import Path
 from datetime import datetime, timezone
 import pandas as pd
+import numpy as np
+from matplotlib.ticker import PercentFormatter
 
 # Interactive display toggle
 SHOW_PLOTS = True
@@ -14,7 +16,7 @@ sns.set_theme(style="whitegrid", context="talk", palette="deep")
 # Figure saving setup
 FIG_ROOT = Path("figures")
 (FIG_ROOT / "E4").mkdir(parents=True, exist_ok=True)
-RUN_DATE = datetime.now(timezone.utc).date().isoformat()
+RUN_STAMP = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
 def save_fig(fig, filename: str, subdir: str = None, dpi: int = 200):
     out_dir = FIG_ROOT if not subdir else FIG_ROOT / subdir
@@ -36,80 +38,69 @@ if results:
     df = pd.DataFrame(results)
     # Normalize side labels
     df['side'] = df['side'].str.capitalize()
-    # Win column already boolean
 
-    # Summary counts
-    summary = (df
-               .groupby(['side', 'win'])
-               .size()
-               .reset_index(name='count'))
-
-    # Pivot for stacked bar
-    pivot = (summary
-             .pivot(index='side', columns='win', values='count')
-             .fillna(0)
-             .rename(columns={True:'Wins', False:'Losses'}))
-
-    pivot['Total'] = pivot['Wins'] + pivot['Losses']
-    pivot['Winrate'] = (pivot['Wins'] / pivot['Total'] * 100).round(1)
-
-    # --- Stacked bar (more readable than pie for side comparison) ---
+    # --- Count plot: Games by side and result (seaborn countplot) ---
     plt.figure(figsize=(7,5))
-    bottom = None
-    colors = {'Wins':'#2b8cbe', 'Losses':'#e34a33'}
-    for col in ['Wins', 'Losses']:
-        plt.bar(pivot.index, pivot[col], bottom=bottom, label=col, color=colors[col], edgecolor='black', linewidth=0.6)
-        if bottom is None:
-            bottom = pivot[col].copy()
-        else:
-            bottom += pivot[col]
-    plt.title(f"Win/Loss by Side for {SUMMONER_NAME}#{TAGLINE}", fontsize=16, weight='bold')
-    plt.ylabel("Games")
-    plt.xlabel("Side")
-    # Annotate totals & winrate
-    for i, side in enumerate(pivot.index):
-        total = pivot.loc[side, 'Total']
-        wr = pivot.loc[side, 'Winrate']
-        plt.text(i, total + 0.2, f"Total {total}\nWR {wr}%", ha='center', va='bottom', fontsize=10, weight='bold')
-    plt.legend(title="Result", frameon=True)
+    ax = sns.countplot(
+        data=df,
+        x='side', hue='win', dodge=True,
+        palette={True: '#2b8cbe', False: '#e34a33'},
+        order=sorted(df['side'].unique())
+    )
+    plt.title(f"Games by Side and Result for {SUMMONER_NAME}#{TAGLINE}", fontsize=16, weight='bold')
+    plt.xlabel("Side"); plt.ylabel("Games")
+    # Annotate bars
+    for c in ax.containers:
+        ax.bar_label(c, fmt='%d', padding=3)
+    ax.legend(title="Win", frameon=True)
     plt.tight_layout()
-    # Save figure
-    save_fig(plt.gcf(), f"E4_script_{RUN_DATE}_{SUMMONER_NAME}_{TAGLINE}_StackedBar.png", subdir="E4")
+    save_fig(plt.gcf(), f"E4_script_{RUN_STAMP}_{SUMMONER_NAME}_{TAGLINE}_CountBySideWin.png", subdir="E4")
     if SHOW_PLOTS:
         plt.show()
     else:
         plt.close()
 
-    # --- Side share donut (overall distribution) ---
-    side_totals = pivot['Total']
-    plt.figure(figsize=(6,6))
-    wedges, texts, autotexts = plt.pie(side_totals, labels=[f"{s} ({v})" for s,v in side_totals.items()], autopct='%1.1f%%', startangle=90, colors=['#4a90e2','#e94b3c'], wedgeprops={'edgecolor':'white'})
-    centre_circle = plt.Circle((0,0),0.55,fc='white')
-    fig = plt.gcf()
-    fig.gca().add_artist(centre_circle)
-    total_games = int(side_totals.sum())
-    plt.title(f"Side Distribution (n={total_games})", fontsize=15, weight='bold')
-    plt.tight_layout()
-    # Save figure
-    save_fig(plt.gcf(), f"E4_script_{RUN_DATE}_{SUMMONER_NAME}_{TAGLINE}_Donut.png", subdir="E4")
-    if SHOW_PLOTS:
-        plt.show()
-    else:
-        plt.close()
-
-    # --- Winrate bar with confidence style (approx, Wilson not computed) ---
+    # --- Winrate bar with 95% CI (seaborn barplot over 0/1 win) ---
     plt.figure(figsize=(6,5))
-    ax = sns.barplot(x=pivot.index, y=pivot['Winrate'], palette=['#4a90e2','#e94b3c'], edgecolor='black', linewidth=0.6)
+    df['win_num'] = df['win'].astype(int)
+    ax = sns.barplot(
+        data=df,
+        x='side', y='win_num', estimator=np.mean,
+        errorbar=('ci', 95),
+        hue='side', palette={'Blue': '#4a90e2', 'Red': '#e94b3c'},
+        dodge=False, edgecolor='black', linewidth=0.6, legend=False
+    )
     ax.set_title("Winrate by Side (%)", fontsize=16, weight='bold')
     ax.set_xlabel("Side")
     ax.set_ylabel("Winrate (%)")
-    for p, wr in zip(ax.patches, pivot['Winrate']):
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    # Annotate bars with percentages
+    for p in ax.patches:
         h = p.get_height()
-        ax.annotate(f"{wr}%", (p.get_x()+p.get_width()/2., h), ha='center', va='bottom', fontsize=10, xytext=(0,4), textcoords='offset points')
-    plt.ylim(0, 100)
+        ax.annotate(f"{h*100:.1f}%", (p.get_x()+p.get_width()/2., h), ha='center', va='bottom', fontsize=10, xytext=(0,4), textcoords='offset points')
     plt.tight_layout()
-    # Save figure
-    save_fig(plt.gcf(), f"E4_script_{RUN_DATE}_{SUMMONER_NAME}_{TAGLINE}_WinrateBar.png", subdir="E4")
+    save_fig(plt.gcf(), f"E4_script_{RUN_STAMP}_{SUMMONER_NAME}_{TAGLINE}_WinrateBar_CI.png", subdir="E4")
+    if SHOW_PLOTS:
+        plt.show()
+    else:
+        plt.close()
+
+    # --- Winrate point plot with 95% CI (minimal) ---
+    plt.figure(figsize=(6,5))
+    ax = sns.pointplot(data=df, x='side', y='win_num', errorbar=('ci',95), join=False, color='#333', markers='o')
+    ax.set_title("Winrate by Side (Point with 95% CI)", fontsize=16, weight='bold')
+    ax.set_xlabel("Side")
+    ax.set_ylabel("Winrate (%)")
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    # Annotate means
+    means = df.groupby('side')['win_num'].mean()
+    for i, side in enumerate(sorted(df['side'].unique())):
+        m = means.loc[side]
+        ax.text(i, m + 0.03, f"{m*100:.1f}%", ha='center', va='bottom', fontsize=10)
+    plt.tight_layout()
+    save_fig(plt.gcf(), f"E4_script_{RUN_STAMP}_{SUMMONER_NAME}_{TAGLINE}_WinratePoint_CI.png", subdir="E4")
     if SHOW_PLOTS:
         plt.show()
     else:

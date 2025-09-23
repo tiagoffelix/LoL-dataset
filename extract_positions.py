@@ -1,16 +1,19 @@
-import requests
 import os
 import json
-from dotenv import load_dotenv
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib.image as mpimg
 from pathlib import Path
 from datetime import datetime, timezone
 
+import requests
+from dotenv import load_dotenv
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 # Interactive toggle
 SHOW_PLOTS = True
+# Archive older outputs instead of deleting (keep off to leave all versions in figures/E3)
+ARCHIVE_OLD_OUTPUTS = False
 
 # Load environment and API key (from .env)
 load_dotenv(override=True)
@@ -20,12 +23,44 @@ if not API_KEY:
     raise SystemExit(1)
 
 # Seaborn theme
-sns.set_theme(style="dark", context="notebook", palette="viridis")
+sns.set_theme(style="white", context="talk", palette="viridis")
+# Prefer fonts that support CJK to avoid missing glyph warnings (Windows first)
+plt.rcParams["font.sans-serif"] = [
+    "Microsoft YaHei", "SimHei", "Noto Sans CJK JP", "DejaVu Sans", "Arial"
+]
+plt.rcParams["axes.unicode_minus"] = False
+
+# Summoner's Rift coordinate system and tuning
+MAP_MIN, MAP_MAX = 0, 14820  # Riot timeline coordinates (approximately square)
+GRID_BINS = 12               # fewer, larger bins to reduce gaps (tweak as needed)
+SMOOTH_KERNEL = 5            # stronger smoothing to fill sparse gaps (odd integer >= 1)
+MASK_MARGIN = 2000           # hide outside-corner triangles (approximate SR diamond)
 
 # Figure saving setup
 FIG_ROOT = Path("figures")
 (FIG_ROOT / "E3").mkdir(parents=True, exist_ok=True)
-RUN_DATE = datetime.now(timezone.utc).date().isoformat()
+# Use timestamp to avoid overwriting within the same day
+RUN_STAMP = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+
+# Archive helper
+def archive_previous_outputs():
+    e3_dir = FIG_ROOT / "E3"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    archive_dir = e3_dir / "archive" / timestamp
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    patterns = [
+        "E3_script_*_Heatmap.png",
+        "E3_script_*_GridHeatmap_Annotated.png",
+    ]
+    moved = 0
+    for pattern in patterns:
+        for p in e3_dir.glob(pattern):
+            try:
+                p.rename(archive_dir / p.name)
+                moved += 1
+            except Exception as e:
+                print(f"Warning: could not archive {p}: {e}")
+    print(f"Archived {moved} previous file(s) to {archive_dir}")
 
 def save_fig(fig, filename: str, subdir: str = None, dpi: int = 220):
     out_dir = FIG_ROOT if not subdir else FIG_ROOT / subdir
@@ -36,7 +71,7 @@ def save_fig(fig, filename: str, subdir: str = None, dpi: int = 220):
     return out_path.as_posix()
 
 # Load your match info file
-with open("arutnevjr_ajr_matches_info.json", "r") as f:
+with open("arutnevjr_ajr_matches_info.json", "r", encoding="utf-8") as f:
     matches_info = json.load(f)
 
 # Get the first match id (or any match you want)
@@ -84,9 +119,6 @@ for frame in timeline["info"]["frames"]:
 
 df = pd.DataFrame(positions)
 
-# Load map image
-map_img = mpimg.imread("lol_map.png")
-
 # Build mapping from puuid to Riot ID
 puuid_to_riotid = {}
 for participant in matchinfo["info"]["participants"]:
@@ -110,37 +142,108 @@ for participant in matchinfo["info"]["participants"]:
     if pid and puuid:
         participantid_to_puuid[pid] = puuid
 
-# Enhanced heatmap + trajectory per player
+# Simple 2D smoothing (uniform mean filter)
+def _smooth2d(arr: np.ndarray, k: int = 3) -> np.ndarray:
+    k = int(max(1, k))
+    if k % 2 == 0:
+        k += 1  # enforce odd
+    if k <= 1:
+        return arr.astype(float)
+    pad = k // 2
+    kernel = np.ones((k, k), dtype=float) / (k * k)
+    padded = np.pad(arr, pad, mode='edge')
+    out = np.zeros_like(arr, dtype=float)
+    for i in range(arr.shape[0]):
+        for j in range(arr.shape[1]):
+            window = padded[i:i + k, j:j + k]
+            out[i, j] = np.sum(window * kernel)
+    return out
+
+# Build a mask to hide outside-corner triangles (approximate SR diamond)
+def _sr_corner_mask(bins: int, xedges: np.ndarray, yedges: np.ndarray) -> np.ndarray:
+    xcenters = 0.5 * (xedges[:-1] + xedges[1:])  # length bins
+    ycenters = 0.5 * (yedges[:-1] + yedges[1:])  # length bins
+    # After transpose, heat[y, x] -> meshgrid(y first, then x)
+    YY, XX = np.meshgrid(ycenters, xcenters, indexing='ij')  # shape (bins, bins)
+    # Hide two opposite corners outside the diagonal playable area
+    min_sum = MAP_MIN + MASK_MARGIN
+    max_sum = MAP_MAX * 2 - MASK_MARGIN
+    mask = (XX + YY < min_sum) | (XX + YY > max_sum)
+    return mask
+
+# Helper to build annotated grid heatmap from x,y coordinates
+def plot_annotated_grid_heatmap(player_df: pd.DataFrame, riotid: str, bins: int = GRID_BINS):
+    # Clamp to map bounds
+    x = player_df["x"].clip(MAP_MIN, MAP_MAX).to_numpy()
+    y = player_df["y"].clip(MAP_MIN, MAP_MAX).to_numpy()
+
+    # Bin positions into fixed SR coordinate space
+    H, xedges, yedges = np.histogram2d(
+        x, y,
+        bins=[bins, bins],
+        range=[[MAP_MIN, MAP_MAX], [MAP_MIN, MAP_MAX]]
+    )
+
+    # Rows as Y, Cols as X for seaborn heatmap
+    heat_raw = H.T.astype(int)
+
+    # Smoothed copy for color fill to reduce "holes"; keep raw counts for annotations
+    heat_smooth = _smooth2d(heat_raw, SMOOTH_KERNEL)
+
+    # Build annotations: empty string for zeros to reduce clutter
+    annot = heat_raw.astype(str)
+    annot[heat_raw == 0] = ""
+
+    # SR corner mask to hide invalid corners
+    mask = _sr_corner_mask(bins, xedges, yedges)
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8, 8))
+    sns.heatmap(
+        heat_smooth,
+        ax=ax,
+        cmap="mako",
+        cbar=True,
+        annot=annot,
+        fmt="",
+        linewidths=0.6,
+        linecolor="white",
+        square=True,
+        mask=mask,
+        cbar_kws={"label": "Position intensity (smoothed)"}
+    )
+
+    # Put origin at bottom to match LoL coordinates
+    ax.invert_yaxis()
+
+    # Label ticks with map coords (approximate, evenly spaced)
+    step = max(1, bins // 5)
+    xticks = np.arange(0.5, bins, step)
+    yticks = np.arange(0.5, bins, step)
+    xlabels = [f"{int(v):d}" for v in np.linspace(MAP_MIN, MAP_MAX, bins)[::step]]
+    ylabels = [f"{int(v):d}" for v in np.linspace(MAP_MIN, MAP_MAX, bins)[::step]]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xlabels, rotation=0)
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(ylabels, rotation=0)
+
+    ax.set_title(f"Annotated Grid Heatmap: {riotid}", fontsize=15, weight='bold')
+    ax.set_xlabel("X coordinate (~SR units)")
+    ax.set_ylabel("Y coordinate (~SR units)")
+    fig.tight_layout()
+
+    safe_name = riotid.replace('#', '_').replace(' ', '_')
+    save_fig(fig, f"E3_script_{RUN_STAMP}_{safe_name}_GridHeatmap_Annotated.png", subdir="E3")
+    if SHOW_PLOTS:
+        plt.show()
+    else:
+        plt.close(fig)
+
+# Generate visuals per player (annotated grid only)
 for pid in sorted(df["participantId"].unique(), key=int):
     player_df = df[df["participantId"] == pid].sort_values("timestamp")
     puuid = participantid_to_puuid.get(str(pid))
     riotid = puuid_to_riotid.get(puuid, f"Player {pid}")
 
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.imshow(map_img, extent=[0, 18000, 0, 18000], aspect='auto', alpha=0.5)
-
-    # Kernel density heatmap
-    sns.kdeplot(x=player_df["x"], y=player_df["y"], fill=True, thresh=0.05, levels=50,
-                cmap="viridis", bw_adjust=0.6, alpha=0.85, ax=ax)
-
-    # Trajectory line (smoothed appearance via alpha)
-    ax.plot(player_df["x"], player_df["y"], color="#ff6f69", linewidth=1.2, alpha=0.9, label="Path")
-    ax.scatter(player_df["x"].iloc[0], player_df["y"].iloc[0], color="#2ecc71", s=40, zorder=5, label="Start")
-    ax.scatter(player_df["x"].iloc[-1], player_df["y"].iloc[-1], color="#e74c3c", s=40, zorder=5, label="End")
-
-    ax.set_title(f"Movement Density & Path: {riotid}", fontsize=14, weight='bold')
-    ax.set_xlim(0, 18000)
-    ax.set_ylim(0, 18000)
-    ax.set_xlabel("X Coordinate")
-    ax.set_ylabel("Y Coordinate")
-    ax.legend(frameon=True)
-    ax.grid(alpha=0.15, linestyle='--')
-    for spine in ax.spines.values():
-        spine.set_alpha(0.3)
-
-    safe_name = riotid.replace('#', '_').replace(' ', '_')
-    save_fig(fig, f"E3_script_{RUN_DATE}_{safe_name}_Heatmap.png", subdir="E3")
-    if SHOW_PLOTS:
-        plt.show()
-    else:
-        plt.close(fig)
+    # Annotated spreadsheet-style heatmap only
+    plot_annotated_grid_heatmap(player_df, riotid, bins=GRID_BINS)
