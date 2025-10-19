@@ -112,16 +112,16 @@ def _infer_default_patches() -> Dict[str, str]:
 
 @dataclass
 class ChampionBalanceConfig:
-    champion_name: str = "Volibear"
+    champion_name: str = "Syndra"
     patches: Dict[str, str] = field(
         default_factory=_infer_default_patches
     )
     matches_per_patch: int = 60
-    match_search_timeout_seconds: int = 1200
+    match_search_timeout_seconds: int = 10000
     queues: Tuple[int, ...] = (420, 440)
-    max_matches_per_player: int = 400
+    max_matches_per_player: int = 200
     matches_batch_size: int = 75
-    output_path: str = "champion_balance_stats.json"
+    output_path: str = "balancing/champion_balance_stats.json"
     store_match_ids: bool = True
     match_type: Optional[str] = "ranked"  # filter for match-v5 ids endpoint
     debug_requests: bool = False           # verbose logging of API requests
@@ -151,7 +151,7 @@ class ChampionBalanceConfig:
     seed_entries_per_tier: int = 30
     player_puuids_override: Tuple[str, ...] = field(default_factory=tuple)
     player_puuid_file: Optional[str] = None
-    summary_output_path: str = "champion_balance_summary.txt"
+    summary_output_path: str = "balancing/champion_balance_summary.txt"
     generate_plot: bool = True
     plot_output_path: Optional[str] = None
 
@@ -213,7 +213,7 @@ class ChampionBalanceConfig:
         if self.player_puuid_file:
             self.player_puuid_file = str(self.player_puuid_file).strip() or None
         self.summary_output_path = (
-            str(self.summary_output_path).strip() or "champion_balance_summary.txt"
+            "balancing/champion_balance_summary.txt"
         )
         self.generate_plot = bool(self.generate_plot)
         if self.plot_output_path:
